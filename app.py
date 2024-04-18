@@ -1,4 +1,4 @@
-import streamlit as st
+from flask import Flask, request, render_template, jsonify
 import joblib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -9,20 +9,22 @@ from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 from gensim.models import KeyedVectors
 
+app = Flask(__name__)
+
 # Load the XGBoost model and TF-IDF Vectorizer
 try:
     model, tfidf_vectorizer = joblib.load('xgboost_model_with_fasttext_and_tfidf.pkl')
 except FileNotFoundError:
-    st.error("Model file not found. Please ensure that the model file is available.")
-    st.stop()
+    print("Model file not found. Please ensure that the model file is available.")
+    exit()
 
 # Load pre-trained FastText word embeddings
 fasttext_model_path = 'wiki-news-300d-1M.vec'
 try:
     fasttext_model = KeyedVectors.load_word2vec_format(fasttext_model_path, binary=False, encoding='utf-8')
 except FileNotFoundError:
-    st.error("FastText model file not found. Please ensure that the model file is available.")
-    st.stop()
+    print("FastText model file not found. Please ensure that the model file is available.")
+    exit()
 
 # Ensure TF-IDF Vectorizer has the same configuration as during training
 tfidf_vectorizer.max_features = 1600  # Update to match the training configuration
@@ -75,22 +77,25 @@ def predict(text):
 
     return prediction
 
-# Streamlit app
-st.title('Suicide Detection')
+# Route for rendering the HTML template
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-text_input = st.text_area('Enter text:', '')
+# Route for prediction
+@app.route('/predict', methods=['POST'])
+def predict_suicide():
+    data = request.get_json()
+    text = data['text']
+    try:
+        # Make prediction
+        prediction = predict(text)
+        result = {'prediction': int(prediction)}
+        return jsonify(result)
+    except Exception as e:
+        print(e)  # Print the exception traceback to the console
+        return jsonify({'error': 'An internal server error occurred'}), 500
 
-if st.button('Predict'):
-    if text_input.strip():
-        try:
-            # Make prediction
-            prediction = predict(text_input)
-            if prediction == 1:
-                st.write('The text contains suicidal content.')
-            else:
-                st.write('The text does not contain suicidal content.')
-        except Exception as e:
-            st.error("An error occurred during prediction. Please try again.")
-            st.error(str(e))
-    else:
-        st.warning('Please enter some text to predict.')
+
+if __name__ == '__main__':
+    app.run(debug=True)
